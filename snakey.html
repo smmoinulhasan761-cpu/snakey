@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Snake Clash 3D: NovaPulse Edition</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+    #startScreen {
+      position: absolute; width: 100%; height: 100%;
+      background: linear-gradient(#000, #111);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #0f0; text-align: center; z-index: 10;
+    }
+    #startScreen h1 {
+      font-size: 3em; animation: pulse 2s infinite;
+    }
+    #startScreen button {
+      font-size: 1.5em; padding: 10px 20px; margin-top: 20px;
+      background: #0f0; border: none; cursor: pointer;
+    }
+    #bossBar {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      width: 300px; height: 20px; background: #333; border: 2px solid #fff;
+      display: none;
+    }
+    #bossHealth {
+      height: 100%; background: #f00; width: 100%;
+    }
+    #scoreBoard {
+      position: absolute; top: 50px; left: 20px; color: #0f0; font-size: 1.2em;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>Snakey</h1>
+    <p>Created by SS • Powered by SS</p>
+    <button onclick="startGame()">▶ Play</button>
+  </div>
+  <div id="bossBar"><div id="bossHealth"></div></div>
+  <div id="scoreBoard">Level: 1<br>Score: 0<br>High Score: 0</div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, snake = [], direction, food, moveCooldown = 0, boost = false;
+    let boss, bossHealth = 100, level = 1, baseSpeed = 10, foodTimer = 0, score = 0;
+    let highScore = localStorage.getItem("novaHighScore") || 0;
+
+    function startGame() {
+      document.getElementById("startScreen").style.display = "none";
+      updateScoreBoard();
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      direction = new THREE.Vector3(2, 0, 0);
+
+      const grid = new THREE.GridHelper(100, 50, 0x00ff00, 0x003300);
+      scene.add(grid);
+
+      const head = new THREE.Mesh(
+        new THREE.BoxGeometry(2, 2, 2),
+        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+      );
+      head.position.set(0, 0, 0);
+      scene.add(head);
+      snake.push(head);
+
+      food = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffff00 })
+      );
+      food.position.set(10, 0, 10);
+      scene.add(food);
+
+      spawnBoss();
+
+      camera.position.set(0, 50, 50);
+      camera.lookAt(0, 0, 0);
+
+      document.addEventListener("keydown", e => {
+        if (e.key === "ArrowUp") direction.set(0, 0, -2);
+        if (e.key === "ArrowDown") direction.set(0, 0, 2);
+        if (e.key === "ArrowLeft") direction.set(-2, 0, 0);
+        if (e.key === "ArrowRight") direction.set(2, 0, 0);
+        if (e.key === " ") boost = true;
+      });
+
+      document.addEventListener("keyup", e => {
+        if (e.key === " ") boost = false;
+      });
+
+      animate();
+    }
+
+    function updateScoreBoard() {
+      document.getElementById("scoreBoard").innerHTML =
+        `Level: ${level}<br>Score: ${score}<br>High Score: ${highScore}`;
+    }
+
+    function spawnBoss() {
+      boss = new THREE.Mesh(
+        new THREE.BoxGeometry(10, 2, 10),
+        new THREE.MeshBasicMaterial({ color: 0x8e44ad })
+      );
+      boss.position.set(20, 0, 20);
+      scene.add(boss);
+      document.getElementById("bossBar").style.display = "block";
+    }
+
+    function updateBoss() {
+      if (!boss) return;
+      const bossSpeed = 0.1 + level * 0.05;
+      boss.position.x -= bossSpeed;
+      boss.position.z += Math.sin(Date.now() / 500) * (0.2 + level * 0.05);
+
+      if (snake[0].position.distanceTo(boss.position) < 6) {
+        bossHealth -= 5;
+        document.getElementById("bossHealth").style.width = bossHealth + "%";
+        if (bossHealth <= 0) {
+          scene.remove(boss);
+          boss = null;
+          level++;
+          baseSpeed = Math.max(3, baseSpeed - 1);
+          score += 100;
+          if (score > highScore) {
+            highScore = score;
+            localStorage.setItem("novaHighScore", highScore);
+          }
+          updateScoreBoard();
+          alert("Boss defeated! Welcome to Level " + level);
+          spawnBoss();
+          bossHealth = 100;
+          document.getElementById("bossHealth").style.width = "100%";
+        }
+      }
+    }
+
+    function moveSnake() {
+      const speed = boost ? 2 : 1;
+      const newHeadPos = snake[0].position.clone().add(direction.clone().multiplyScalar(speed));
+      for (let i = snake.length - 1; i > 0; i--) {
+        snake[i].position.copy(snake[i - 1].position);
+      }
+      snake[0].position.copy(newHeadPos);
+
+      if (snake[0].position.distanceTo(food.position) < 2) {
+        const newSegment = new THREE.Mesh(
+          new THREE.BoxGeometry(2, 2, 2),
+          new THREE.MeshBasicMaterial({ color: 0xff0000 })
+        );
+        newSegment.position.copy(snake[snake.length - 1].position);
+        scene.add(newSegment);
+        snake.push(newSegment);
+        score += 10;
+        updateScoreBoard();
+        food.position.set(
+          Math.floor(Math.random() * 40 - 20),
+          0,
+          Math.floor(Math.random() * 40 - 20)
+        );
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      moveCooldown++;
+      foodTimer++;
+
+      if (moveCooldown > (boost ? baseSpeed / 2 : baseSpeed)) {
+        moveSnake();
+        updateBoss();
+        moveCooldown = 0;
+      }
+
+      if (foodTimer > 300 - level * 20) {
+        food.position.set(
+          Math.floor(Math.random() * 40 - 20),
+          0,
+          Math.floor(Math.random() * 40 - 20)
+        );
+        foodTimer = 0;
+      }
+
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
